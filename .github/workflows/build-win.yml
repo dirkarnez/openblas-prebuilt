@@ -1,0 +1,100 @@
+name: cpp-cmake-mingw-prebuilt-release-actions-workflow
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+      - 'c*'
+      
+jobs:
+  build:
+    name: Create Release
+    strategy:
+      matrix:
+        id: [a, b, c]
+        include:
+          - id: a
+            os: windows-latest
+            msvc_version: Visual Studio 17 2022
+            targetZip: openblas-${{ github.ref_name }}-msvc2022.zip
+          - id: b
+            os: windows-2019
+            msvc_version: Visual Studio 16 2019
+            targetZip: openblas-${{ github.ref_name }}-msvc2019.zip
+          - id: c
+            os: windows-latest
+            targetZip: openblas-${{ github.ref_name }}-mingw64-x86_64-posix-seh-rev0-8.1.0.zip
+    runs-on: ${{ matrix.os }}
+    env:
+      libraryName: openblas
+      cmakeInstallationPath: openblas-installation
+      tagName: v0.3.21
+    steps:
+      - name: git clone
+        shell: cmd
+        run: git clone --recursive https://github.com/xianyi/OpenBLAS.git && cd OpenBLAS && git checkout ${{ env.tagName }}
+        
+      - name: curl x86_64-8.1.0-release-posix-seh-rt_v6-rev0.7z
+        if: ${{ !matrix.msvc_version }}
+        shell: cmd
+        run: |
+          curl https://github.com/2641797006/c/blob/master/GCC-zip/x86_64-8.1.0-release-posix-seh-rt_v6-rev0.7z?raw=true -L --output x86_64-8.1.0-release-posix-seh-rt_v6-rev0.7z &&^
+          dir &&^
+          7z.exe x x86_64-8.1.0-release-posix-seh-rt_v6-rev0.7z
+          
+      - name: curl cmake-3.22.2-windows-x86_64.zip
+        shell: cmd
+        run: |
+          curl https://github.com/Kitware/CMake/releases/download/v3.22.2/cmake-3.22.2-windows-x86_64.zip -L --output cmake-3.22.2-windows-x86_64.zip &&^
+          dir &&^
+          7z.exe x cmake-3.22.2-windows-x86_64.zip
+        
+      - name: set PATH, check mingw version, cmake generate, build and install
+        shell: cmd
+        if: ${{ matrix.msvc_version }}
+        run: |
+          set PATH=^
+          ${{ github.workspace }}\cmake-3.22.2-windows-x86_64\bin;
+          %PATH%
+          set CD_LINUX=%CD:\=/%
+          cd openblas &&^
+          cmake.exe -G "${{ matrix.msvc_version }}" ^
+          -DCMAKE_BUILD_TYPE=Release ^
+          -DBUILD_SHARED_LIBS=OFF ^
+          -DCMAKE_INSTALL_PREFIX="cmake-build/${{ env.cmakeInstallationPath }}" ^
+          -B./cmake-build &&^
+          cd cmake-build &&^
+          cmake --build . --config Release --target ALL_BUILD -v -- /maxcpucount &&^
+          cmake --install . 
+          
+      - name: set PATH, check mingw version, cmake generate, build and install
+        if: ${{ !matrix.msvc_version }}
+        shell: cmd
+        run: |
+          set PATH=^
+          ${{ github.workspace }}\mingw64;^
+          ${{ github.workspace }}\mingw64\bin;^
+          ${{ github.workspace }}\cmake-3.22.2-windows-x86_64\bin;
+          gcc --version &&^
+          cd openblas &&^
+          cmake.exe -G "MinGW Makefiles" ^
+          -DCMAKE_BUILD_TYPE=Release ^
+          -DBUILD_SHARED_LIBS=OFF ^
+          -DCMAKE_INSTALL_PREFIX="cmake-build/${{ env.cmakeInstallationPath }}" -B./cmake-build &&^
+          cd cmake-build &&^
+          cmake --build . &&^
+          cmake --install . 
+          
+      - name: Archive Release
+        uses: thedoctor0/zip-release@master
+        with:
+          type: 'zip'
+          directory: "openblas/cmake-build/${{ env.cmakeInstallationPath }}"
+          filename: "${{ matrix.targetZip }}"
+
+      - name: Release prebuilt
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "openblas/cmake-build/${{ env.cmakeInstallationPath }}/${{ matrix.targetZip }}"
+          allowUpdates: true
+          token: ${{ secrets.GITHUB_TOKEN }}
