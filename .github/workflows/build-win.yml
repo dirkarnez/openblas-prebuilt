@@ -61,7 +61,7 @@ jobs:
         if: ${{ matrix.msvc_version }}
         run: |
           set PATH=^
-          ${{ github.workspace }}\cmake-3.22.2-windows-x86_64\bin;
+          ${{ github.workspace }}\cmake-3.22.2-windows-x86_64\bin;^
           %PATH%
           set CD_LINUX=%CD:\=/%
           cd openblas &&^
